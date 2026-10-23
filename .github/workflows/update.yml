@@ -52,8 +52,10 @@ jobs:
       - name: build
         run: |
           dnf -y builddep lima.spec
-          spectool -g -R lima.spec
-          rpmbuild -ba lima.spec
+          # limactl (run in %check) refuses to run as root.
+          useradd -m builder
+          cp lima.spec ~builder/
+          runuser -u builder -- sh -ec 'cd && spectool -g -R lima.spec && rpmbuild -ba lima.spec'
 
       - name: push
         if: steps.bump.outputs.version != ''
