@@ -1,0 +1,64 @@
+name: update
+
+# Check for a new upstream Lima release; if there is one, bump lima.spec,
+# make sure it still builds, and push. COPR rebuilds on push (webhook).
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:latest
+    steps:
+      - name: install deps
+        run: dnf -y install git-core rpmdevtools rpm-build dnf-plugins-core jq curl
+
+      - uses: actions/checkout@v4
+
+      - name: bump spec to the latest release
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        id: bump
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          latest=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/repos/lima-vm/lima/releases/latest | jq -r .tag_name)
+          latest=${latest#v}
+          current=$(rpmspec -q --srpm --qf '%{version}' lima.spec)
+          echo "current: $current, latest: $latest"
+          # rpmdev-vercmp exits with 11 if the first version is newer.
+          rc=0
+          rpmdev-vercmp "$latest" "$current" >/dev/null || rc=$?
+          if [ "$rc" -ne 11 ]; then
+            echo "nothing to do"
+            exit 0
+          fi
+          rpmdev-bumpspec -n "$latest" -c "Update to $latest" \
+            -u "Kir Kolyshkin <kolyshkin@gmail.com>" lima.spec
+          echo "version=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: build
+        run: |
+          dnf -y builddep lima.spec
+          spectool -g -R lima.spec
+          rpmbuild -ba lima.spec
+
+      - name: push
+        if: steps.bump.outputs.version != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Update to ${{ steps.bump.outputs.version }}"
+          git push
