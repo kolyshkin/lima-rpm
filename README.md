@@ -1,5 +1,7 @@
 # lima-rpm
 
+[![COPR build status](https://copr.fedorainfracloud.org/coprs/kir/lima/package/lima/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/kir/lima/package/lima/)
+
 RPM packaging of [Lima](https://lima-vm.io) for Fedora, built in COPR:
 <https://copr.fedorainfracloud.org/coprs/kir/lima/>.
 
