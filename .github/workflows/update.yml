@@ -20,7 +20,7 @@ jobs:
     container: registry.fedoraproject.org/fedora:latest
     steps:
       - name: install deps
-        run: dnf -y install git-core rpmdevtools rpm-build dnf-plugins-core jq curl
+        run: dnf -y install git-core gnupg2 rpmdevtools rpm-build dnf-plugins-core jq curl
 
       - uses: actions/checkout@v7
 
@@ -54,8 +54,11 @@ jobs:
           dnf -y builddep lima.spec
           # limactl (run in %check) refuses to run as root.
           useradd -m builder
-          cp lima.spec ~builder/
-          runuser -u builder -- sh -ec 'cd && spectool -g -R lima.spec && rpmbuild -ba lima.spec'
+          # Same SRPM path as COPR (make_srpm), then a binary rebuild.
+          runuser -u builder -- sh -ec '
+            make -f "$1/.copr/Makefile" srpm outdir="$HOME/srpm" spec="$1/lima.spec"
+            rpmbuild --rebuild "$HOME"/srpm/*.src.rpm
+          ' sh "$GITHUB_WORKSPACE"
 
       - name: push
         if: steps.bump.outputs.version != ''
