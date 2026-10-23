@@ -20,7 +20,9 @@ done
 
 name=$(rpmspec -q --srpm --qf '%{name}' "$spec")
 version=$(rpmspec -q --srpm --qf '%{version}' "$spec")
-tag=v$version
+# Upstream version: RPM uses 1.2.3~beta.0 for upstream 1.2.3-beta.0.
+uversion=$(echo "$version" | tr "~" "-")
+tag=v$uversion
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -37,8 +39,8 @@ gpgv --keyring "$tmp/keyring.gpg" "$tmp/tag.sig" "$tmp/tag.payload"
 grep -qx "type commit" "$tmp/tag.payload"
 grep -qx "tag $tag" "$tmp/tag.payload"
 commit=$(sed -n 's/^object //p' "$tmp/tag.payload")
-git -C "$tmp/lima.git" archive --format=tar.gz --prefix="$name-$version/" \
-	-o "$outdir/$name-$version.tar.gz" "$commit"
+git -C "$tmp/lima.git" archive --format=tar.gz --prefix="$name-$uversion/" \
+	-o "$outdir/$name-$uversion.tar.gz" "$commit"
 
 spectool -g -C "$outdir" "$spec"
 cp "$top/lima-keyring.asc" "$outdir/"

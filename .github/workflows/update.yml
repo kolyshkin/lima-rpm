@@ -1,7 +1,10 @@
 name: update
 
-# Check for a new upstream Lima release; if there is one, bump lima.spec,
-# make sure it still builds, and push. COPR rebuilds on push (webhook).
+# Check for new upstream Lima releases; if there is one, bump lima.spec,
+# make sure it still builds, and push. COPR rebuilds on push (webhook):
+#  - main: the latest release, built in kir/lima;
+#  - beta: main with the version of the latest prerelease, as long as it is
+#    newer than the latest release, built in kir/lima-beta.
 
 on:
   schedule:
@@ -14,8 +17,11 @@ on:
 permissions:
   contents: write
 
+env:
+  PACKAGER: Kir Kolyshkin <kolyshkin@gmail.com>
+
 jobs:
-  update:
+  stable:
     runs-on: ubuntu-latest
     container: registry.fedoraproject.org/fedora:latest
     steps:
@@ -45,20 +51,11 @@ jobs:
             echo "nothing to do"
             exit 0
           fi
-          rpmdev-bumpspec -n "$latest" -c "Update to $latest" \
-            -u "Kir Kolyshkin <kolyshkin@gmail.com>" lima.spec
+          rpmdev-bumpspec -n "$latest" -c "Update to $latest" -u "$PACKAGER" lima.spec
           echo "version=$latest" >> "$GITHUB_OUTPUT"
 
       - name: build
-        run: |
-          dnf -y builddep lima.spec
-          # limactl (run in %check) refuses to run as root.
-          useradd -m builder
-          # Same SRPM path as COPR (make_srpm), then a binary rebuild.
-          runuser -u builder -- sh -ec '
-            make -f "$1/.copr/Makefile" srpm outdir="$HOME/srpm" spec="$1/lima.spec"
-            rpmbuild --rebuild "$HOME"/srpm/*.src.rpm
-          ' sh "$GITHUB_WORKSPACE"
+        run: sh .github/build.sh
 
       - name: push
         if: steps.bump.outputs.version != ''
@@ -67,3 +64,69 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "Update to ${{ steps.bump.outputs.version }}"
           git push
+
+  beta:
+    needs: stable
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:latest
+    steps:
+      - name: install deps
+        run: dnf -y install git-core gnupg2 rpmdevtools rpm-build dnf-plugins-core jq curl
+
+      # Fresh main, including a bump just pushed by the stable job.
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: regenerate the beta branch
+        id: bump
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          stable=$(rpmspec -q --srpm --qf '%{version}' lima.spec)
+          pre=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/lima-vm/lima/releases?per_page=30" |
+            jq -r '[.[] | select(.prerelease and (.draft | not))][0].tag_name // empty')
+          # v1.2.3-beta.0 -> 1.2.3~beta.0, which RPM sorts before 1.2.3.
+          pre=${pre#v}
+          pre=${pre/-/\~}
+          echo "stable: $stable, prerelease: ${pre:-none}"
+          rc=0
+          [ -n "$pre" ] && { rpmdev-vercmp "$pre" "$stable" >/dev/null || rc=$?; }
+          if [ "$rc" -ne 11 ]; then
+            echo "no prerelease newer than $stable"
+            exit 0
+          fi
+          # The beta branch is main plus one commit changing the version.
+          if git rev-parse -q --verify origin/beta >/dev/null; then
+            git show origin/beta:lima.spec > "$RUNNER_TEMP/beta.spec"
+            current=$(rpmspec -q --srpm --qf '%{version}' "$RUNNER_TEMP/beta.spec")
+            if [ "$current" = "$pre" ] && [ "$(git rev-parse origin/beta^)" = "$(git rev-parse HEAD)" ]; then
+              echo "beta is up to date"
+              exit 0
+            fi
+          fi
+          # Release must grow when beta is regenerated on top of a newer main;
+          # use the number of commits in main (bumpspec adds one).
+          n=$(git rev-list --count HEAD)
+          git checkout -B beta
+          sed -i -E "s/^(Version:\s+).*/\1$pre/; s/^(Release:\s+)[0-9]+/\1$((n - 1))/" lima.spec
+          rpmdev-bumpspec -c "Update to $pre" -u "$PACKAGER" lima.spec
+          echo "version=$pre" >> "$GITHUB_OUTPUT"
+
+      - name: build
+        if: steps.bump.outputs.version != ''
+        run: sh .github/build.sh
+
+      - name: push
+        if: steps.bump.outputs.version != ''
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Update to ${{ steps.bump.outputs.version }}"
+          git push --force origin beta
