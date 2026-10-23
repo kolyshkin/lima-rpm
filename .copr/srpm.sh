@@ -9,6 +9,7 @@ set -eu
 outdir=$1
 spec=$2
 top=$(dirname "$spec")
+mkdir -p "$outdir"
 
 for cmd in spectool rpmbuild git gpgv; do
 	command -v $cmd >/dev/null || {
