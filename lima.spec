@@ -97,7 +97,7 @@ make VERSION=v%{version} PREFIX=%{_prefix} DESTDIR=%{buildroot} install
 
 %changelog
 * Fri Oct 23 2026 Kir Kolyshkin <kolyshkin@gmail.com> - 2.2.1-2
-- Verify sources: signed upstream tag, %gpgverify of SHA256SUMS.asc
+- Verify sources: signed upstream tag, %%gpgverify of SHA256SUMS.asc
 
 * Fri Oct 23 2026 Kir Kolyshkin <kolyshkin@gmail.com> - 2.2.1-1
 - Initial package
