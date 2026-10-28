@@ -54,7 +54,9 @@ jobs:
           rpmdev-bumpspec -n "$latest" -c "Update to $latest" -u "$PACKAGER" lima.spec
           echo "version=$latest" >> "$GITHUB_OUTPUT"
 
+      # Scheduled runs only build when there is something new.
       - name: build
+        if: github.event_name != 'schedule' || steps.bump.outputs.version != ''
         run: sh .github/build.sh
 
       - name: push
