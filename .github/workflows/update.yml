@@ -26,7 +26,7 @@ jobs:
     container: registry.fedoraproject.org/fedora:latest
     steps:
       - name: install deps
-        run: dnf -y install git-core gnupg2 rpmdevtools rpm-build dnf-plugins-core jq curl
+        run: dnf -y install git-core rpmdevtools rpm-build jq
 
       - uses: actions/checkout@v7
 
@@ -74,7 +74,7 @@ jobs:
     container: registry.fedoraproject.org/fedora:latest
     steps:
       - name: install deps
-        run: dnf -y install git-core gnupg2 rpmdevtools rpm-build dnf-plugins-core jq curl
+        run: dnf -y install git-core rpmdevtools rpm-build jq
 
       # Fresh main, including a bump just pushed by the stable job.
       - uses: actions/checkout@v7
@@ -108,7 +108,10 @@ jobs:
           if git rev-parse -q --verify origin/beta >/dev/null; then
             git show origin/beta:lima.spec > "$RUNNER_TEMP/beta.spec"
             current=$(rpmspec -q --srpm --qf '%{version}' "$RUNNER_TEMP/beta.spec")
-            if [ "$current" = "$pre" ] && [ "$(git rev-parse origin/beta^)" = "$(git rev-parse HEAD)" ]; then
+            # Changes to main outside of what goes into the SRPM (README, CI)
+            # do not need a beta rebuild.
+            if [ "$current" = "$pre" ] &&
+              git diff --quiet origin/beta^ HEAD -- lima.spec lima-keyring.asc .copr; then
               echo "beta is up to date"
               exit 0
             fi
