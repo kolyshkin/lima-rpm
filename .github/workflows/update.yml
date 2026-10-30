@@ -10,9 +10,20 @@ on:
   schedule:
     - cron: '17 */6 * * *'
   workflow_dispatch:
+  # Only changes to what gets built (or how) need a build.
   push:
     branches: [main]
+    paths:
+      - lima.spec
+      - lima-keyring.asc
+      - .copr/**
+      - .github/**
   pull_request:
+    paths:
+      - lima.spec
+      - lima-keyring.asc
+      - .copr/**
+      - .github/**
 
 permissions:
   contents: write
