@@ -21,7 +21,38 @@ env:
   PACKAGER: Kir Kolyshkin <kolyshkin@gmail.com>
 
 jobs:
+  # Scheduled runs skip the rest unless the list of upstream releases has
+  # changed since the last successful run (remembered in the actions cache).
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+      seen: ${{ steps.lookup.outputs.cache-hit }}
+    steps:
+      - name: fingerprint upstream releases
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        id: key
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sum=$(gh api 'repos/lima-vm/lima/releases?per_page=30' \
+            --jq '.[] | select(.draft | not) | "\(.tag_name) \(.prerelease)"' |
+            sha256sum | cut -c1-16)
+          echo "key=releases-$sum" >> "$GITHUB_OUTPUT"
+
+      - name: look up the fingerprint
+        if: steps.key.outputs.key != ''
+        id: lookup
+        uses: actions/cache/restore@v6
+        with:
+          path: releases
+          key: ${{ steps.key.outputs.key }}
+          lookup-only: true
+
   stable:
+    needs: check
+    if: github.event_name != 'schedule' || needs.check.outputs.seen != 'true'
     runs-on: ubuntu-latest
     container: registry.fedoraproject.org/fedora:latest
     steps:
@@ -135,3 +166,14 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "Update to ${{ steps.bump.outputs.version }}"
           git push --force origin beta
+
+  remember:
+    needs: [check, beta]
+    if: needs.check.outputs.key != '' && needs.check.outputs.seen != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ needs.check.outputs.key }}" > releases
+      - uses: actions/cache/save@v6
+        with:
+          path: releases
+          key: ${{ needs.check.outputs.key }}
