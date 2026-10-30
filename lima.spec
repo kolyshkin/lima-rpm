@@ -4,8 +4,8 @@
 %global _missing_build_ids_terminate_build 0
 
 Name:           lima
-Version:        2.2.1
-Release:        3%{?dist}
+Version:        2.3.0~rc.0
+Release:        14%{?dist}
 # Upstream version: RPM uses 1.2.3~beta.0 for upstream's 1.2.3-beta.0.
 %global uversion %{lua: print((rpm.expand("%{version}"):gsub("~", "-")))}
 Summary:        Linux virtual machines with automatic file sharing and port forwarding
@@ -99,6 +99,9 @@ make VERSION=v%{uversion} PREFIX=%{_prefix} DESTDIR=%{buildroot} install
 %exclude %{_datadir}/lima/lima-guestagent.%{native_ga}.gz
 
 %changelog
+* Fri Oct 30 2026 Kir Kolyshkin <kolyshkin@gmail.com> - 2.3.0~rc.0-14
+- Update to 2.3.0~rc.0
+
 * Fri Oct 23 2026 Kir Kolyshkin <kolyshkin@gmail.com> - 2.2.1-3
 - Package everything in libexec/lima (2.3 adds privileged/lima-privileged-net)
 - Add Suggests: dnsmasq (used by lima-privileged-net)
