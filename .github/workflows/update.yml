@@ -147,22 +147,24 @@ jobs:
             exit 0
           fi
           # The beta branch is main plus one commit changing the version.
+          # Release (before bumpspec adds one) is 0 for a new version, or
+          # the current beta's one if the version stays the same.
+          rel=0
           if git rev-parse -q --verify origin/beta >/dev/null; then
             git show origin/beta:lima.spec > "$RUNNER_TEMP/beta.spec"
             current=$(rpmspec -q --srpm --qf '%{version}' "$RUNNER_TEMP/beta.spec")
-            # Changes to main outside of what goes into the SRPM (README, CI)
-            # do not need a beta rebuild.
-            if [ "$current" = "$pre" ] &&
-              git diff --quiet origin/beta^ HEAD -- lima.spec lima-keyring.asc .copr; then
-              echo "beta is up to date"
-              exit 0
+            if [ "$current" = "$pre" ]; then
+              # Changes to main outside of what goes into the SRPM (README,
+              # CI) do not need a beta rebuild.
+              if git diff --quiet origin/beta^ HEAD -- lima.spec lima-keyring.asc .copr; then
+                echo "beta is up to date"
+                exit 0
+              fi
+              rel=$(rpmspec -q --srpm --undefine dist --qf '%{release}' "$RUNNER_TEMP/beta.spec")
             fi
           fi
-          # Release must grow when beta is regenerated on top of a newer main;
-          # use the number of commits in main (bumpspec adds one).
-          n=$(git rev-list --count HEAD)
           git checkout -B beta
-          sed -i -E "s/^(Version:\s+).*/\1$pre/; s/^(Release:\s+)[0-9]+/\1$((n - 1))/" lima.spec
+          sed -i -E "s/^(Version:\s+).*/\1$pre/; s/^(Release:\s+)[0-9]+/\1$rel/" lima.spec
           rpmdev-bumpspec -c "Update to $pre" -u "$PACKAGER" lima.spec
           echo "version=$pre" >> "$GITHUB_OUTPUT"
 
